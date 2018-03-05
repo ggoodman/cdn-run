@@ -193,7 +193,8 @@ export class Context {
                         return contents;
                     }
 
-                    throw new Error(`File not found: ${spec.address}`);
+                    // Fall through to default system behaviour
+                    return systemFetch(spec.address);
                 },
             })
         );
