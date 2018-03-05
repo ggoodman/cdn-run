@@ -1,0 +1,35 @@
+{
+  "name": "cdn-run",
+  "description": "Run code anywhere without needing to pre-install or bundle any modules",
+  "version": "1.0.0-pre.0",
+  "keywords": [
+    "cdn",
+    "systemjs"
+  ],
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "scripts": {
+    "build-declarations": "tsc -d",
+    "build": "npm run build-declarations && rollup -c",
+    "test": "lab -v",
+    "prebuild": "rm -rf ./dist",
+    "pretest": "npm run build"
+  },
+  "author": "Geoffrey Goodman",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/systemjs": "^0.20.6",
+    "code": "^5.2.0",
+    "eslint": "^4.18.2",
+    "lab": "^15.3.0",
+    "rollup": "^0.56.3",
+    "rollup-plugin-typescript": "^0.8.1",
+    "tslib": "^1.9.0",
+    "typescript": "^2.7.2"
+  },
+  "dependencies": {
+    "cross-fetch": "^2.0.0",
+    "resolve-npm-dependency-graph": "^1.2.0",
+    "systemjs": "0.21.0"
+  }
+}

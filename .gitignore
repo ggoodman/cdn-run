@@ -1,0 +1,7 @@
+.DS_Store
+node_modules
+!(cross-fetch).d.ts
+*.js.map
+*.ts.map
+dist
+types
