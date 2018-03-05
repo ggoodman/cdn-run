@@ -194,7 +194,7 @@ export class Context {
                     }
 
                     // Fall through to default system behaviour
-                    return systemFetch(spec.address);
+                    return systemFetch(spec);
                 },
             })
         );
