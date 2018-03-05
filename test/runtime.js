@@ -56,7 +56,7 @@ lab.describe('runtime', () => {
                     `,
                 },
             });
-            const { React, ReactDOM } = await runner.run('index.js');
+            const { React, ReactDOM } = await runner.run('index');
 
             expect(React).to.be.an.object();
             expect(React.createElement).to.be.a.function();

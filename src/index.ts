@@ -85,7 +85,11 @@ export class Context {
                 const systemConfig: SystemJSLoader.Config = {
                     map: {},
                     meta: {},
-                    packages: {},
+                    packages: {
+                        '.': {
+                            defaultExtension: 'js',
+                        },
+                    },
                 };
                 const queue = [];
                 const pkgs = await this.loadDependencyPackages();
@@ -106,6 +110,7 @@ export class Context {
                     const pkgId = `${this.baseUrl}/${pkg.name}@${pkg.version}`;
 
                     systemConfig.packages[pkgId] = {
+                        defaultExtension: 'js',
                         map: {},
                         main:
                             this.useBrowser &&
