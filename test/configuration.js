@@ -7,7 +7,31 @@ const Lab = require('lab');
 
 const Runner = require('../');
 
-const lab = (exports.lab = Lab.script());
+const lab = (exports.lab = Lab.script({
+    cli: {
+        globals: [
+            '__extends',
+            '__assign',
+            '__rest',
+            '__decorate',
+            '__param',
+            '__metadata',
+            '__awaiter',
+            '__generator',
+            '__exportStar',
+            '__values',
+            '__read',
+            '__spread',
+            '__await',
+            '__asyncGenerator',
+            '__asyncDelegator',
+            '__asyncValues',
+            '__makeTemplateObject',
+            '__importStar',
+            '__importDefault',
+        ],
+    },
+}));
 
 lab.describe('systemjs configuration', () => {
     lab.test(
@@ -21,6 +45,8 @@ lab.describe('systemjs configuration', () => {
                 },
             });
             const systemConfig = await runner.loadSystemConfig();
+
+            expect(systemConfig).to.be.an.object();
         }
     );
 
@@ -36,6 +62,8 @@ lab.describe('systemjs configuration', () => {
                 useBrowser: true,
             });
             const systemConfig = await runner.loadSystemConfig();
+
+            expect(systemConfig).to.be.an.object();
         }
     );
 });

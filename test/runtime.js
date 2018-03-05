@@ -8,7 +8,33 @@ const Lab = require('lab');
 const Runner = require('../');
 
 const lab = (exports.lab = Lab.script({
-    cli: { globals: ['__cjsWrapper', 'define', 'SystemJS', 'System'] },
+    cli: {
+        globals: [
+            '__extends',
+            '__assign',
+            '__rest',
+            '__decorate',
+            '__param',
+            '__metadata',
+            '__awaiter',
+            '__generator',
+            '__exportStar',
+            '__values',
+            '__read',
+            '__spread',
+            '__await',
+            '__asyncGenerator',
+            '__asyncDelegator',
+            '__asyncValues',
+            '__makeTemplateObject',
+            '__importStar',
+            '__importDefault',
+            '__cjsWrapper',
+            'define',
+            'SystemJS',
+            'System',
+        ],
+    },
 }));
 
 lab.describe('runtime', () => {

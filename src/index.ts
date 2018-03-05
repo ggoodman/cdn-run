@@ -1,12 +1,16 @@
 import fetch from 'cross-fetch';
-import { Client, Package } from 'resolve-npm-dependency-graph';
-import { createLoader } from 'resolve-npm-dependency-graph/dist/cdnLoader';
+import {
+    Client,
+    Package,
+    NpmPackageVersionResponse,
+} from 'resolve-npm-dependency-graph';
 import SystemJSLoader from 'systemjs';
 
 export interface ContextOptions {
     baseUrl?: string;
     dependencies?: { [name: string]: string };
     files?: { [pathname: string]: string };
+    processEnv?: { [key: string]: string };
     useBrowser?: boolean;
 }
 
@@ -14,6 +18,7 @@ export class Context {
     private baseUrl: string;
     private dependencies: { [name: string]: string };
     private files: { [pathname: string]: string };
+    private processEnv: { [key: string]: string };
     private resolverClient: Client;
     private systemConfigDfd?: Deferred<SystemJSLoader.Config>;
     private useBrowser: boolean;
@@ -23,6 +28,7 @@ export class Context {
         dependencies = {},
         files = {},
         useBrowser = typeof window === 'object',
+        processEnv = { NODE_ENV: 'development' },
     }: ContextOptions = {}) {
         this.baseUrl =
             baseUrl.charAt(baseUrl.length - 1) === '/'
@@ -31,9 +37,10 @@ export class Context {
         this.dependencies = dependencies;
         this.files = files;
         this.resolverClient = new Client({
-            packageMetadataLoader: createLoader(),
+            packageMetadataLoader: spec => this.loadPackageMetadata(spec),
         });
         this.systemConfigDfd = null;
+        this.processEnv = processEnv;
         this.useBrowser = useBrowser;
     }
 
@@ -45,6 +52,22 @@ export class Context {
                 return this.resolverClient.load(`${name}@${range}`);
             })
         );
+    }
+
+    private async loadPackageMetadata(
+        spec: string
+    ): Promise<NpmPackageVersionResponse> {
+        const res = await fetch(`${this.baseUrl}/${spec}/package.json`, {
+            redirect: 'follow',
+        });
+
+        if (res.status !== 200) {
+            throw new Error(
+                `Unexpected status code loading '${spec}': ${res.status}`
+            );
+        }
+
+        return res.json();
     }
 
     private normalizeLocalPathname(pathname: string): string {
@@ -125,15 +148,21 @@ export class Context {
     async run(pathname: string): Promise<any> {
         const baseSystemConfig = await this.loadSystemConfig();
         // Shallow clone should be enough
-        const systemConfig = {
+        const systemConfig: SystemJSLoader.Config = {
             ...baseSystemConfig,
             meta: {
                 ...baseSystemConfig.meta,
                 [`${this.baseUrl}/*`]: {
                     loader: '@cdn-run-remote',
+                    globals: {
+                        process: '@cdn-run-process',
+                    },
                 },
                 ['./*']: {
                     loader: '@cdn-run-local',
+                    globals: {
+                        process: '@cdn-run-process',
+                    },
                 },
             },
         };
@@ -161,6 +190,12 @@ export class Context {
 
                     throw new Error(`File not found: ${spec.address}`);
                 },
+            })
+        );
+        system.registry.set(
+            '@cdn-run-process',
+            system.newModule({
+                env: this.processEnv,
             })
         );
         system.registry.set(
