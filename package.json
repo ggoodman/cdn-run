@@ -1,7 +1,7 @@
 {
   "name": "cdn-run",
   "description": "Run code anywhere without needing to pre-install or bundle any modules",
-  "version": "1.0.0-pre.2",
+  "version": "1.0.0-pre.3",
   "keywords": [
     "cdn",
     "systemjs"
