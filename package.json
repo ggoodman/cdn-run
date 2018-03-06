@@ -14,7 +14,8 @@
     "build": "npm run build-declarations && rollup -c",
     "test": "lab -v",
     "prebuild": "rm -rf ./dist",
-    "pretest": "npm run build"
+    "pretest": "npm run build",
+    "preversion": "npm run test"
   },
   "author": {
     "name": "Geoffrey Goodman",

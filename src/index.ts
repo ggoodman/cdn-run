@@ -5,19 +5,142 @@ import {
     NpmPackageVersionResponse,
 } from 'resolve-npm-dependency-graph';
 import SystemJSLoader from 'systemjs';
+import { CompilerOptions } from 'typescript';
+
+export type DependencyMap = { [name: string]: string };
+export enum PresetName {
+    typescript = 'typescript',
+}
+
+interface PresetDefinition {
+    onBeforeResolveDependencies?: (
+        this: Context,
+        dependencies: DependencyMap
+    ) => DependencyMap | Promise<DependencyMap>;
+    onBeforeSystemConfig?: (
+        this: Context,
+        systemConfig: SystemJSLoader.Config,
+        presetOptions?: any
+    ) => SystemJSLoader.Config | Promise<SystemJSLoader.Config>;
+}
+
+type PresetListing = { [key in PresetName]: PresetDefinition };
 
 export interface ContextOptions {
     baseUrl?: string;
-    dependencies?: { [name: string]: string };
+    dependencies?: DependencyMap;
     files?: { [pathname: string]: string };
+    preset?: PresetName;
+    presetOptions?: { [key: string]: any };
     processEnv?: { [key: string]: string };
     useBrowser?: boolean;
 }
+
+export interface SystemJSModule {
+    name: string;
+    address: string;
+    source?: string;
+    metadata?: any;
+}
+
+export interface SystemJSPlugin {
+    fetch?(
+        spec: any,
+        systemFetch: (spec: any) => Promise<string>
+    ): string | Promise<string>;
+    instantiate?(
+        load: SystemJSModule,
+        systemInstantiate: (load: SystemJSModule) => object | Promise<object>
+    ): object | Promise<object>;
+    translate?(load: SystemJSModule): string | Promise<string>;
+}
+
+const presets: PresetListing = {
+    typescript: {
+        onBeforeResolveDependencies: function(
+            this: Context,
+            dependencies: DependencyMap
+        ): DependencyMap {
+            if (!dependencies['plugin-typescript']) {
+                dependencies['plugin-typescript'] = '^8.0.0';
+            }
+            if (!dependencies['typescript']) {
+                dependencies['typescript'] = '^2.7.2';
+            }
+
+            return dependencies;
+        },
+        onBeforeSystemConfig: function(
+            this: Context,
+            systemConfig: SystemJSLoader.Config,
+            presetOptions: any = {}
+        ): SystemJSLoader.Config {
+            const shimModules = [
+                'crypto',
+                'fs',
+                'path',
+                'os',
+                'source-map-support',
+            ];
+
+            if (!systemConfig.map['plugin-typescript'])
+                throw new Error('plugin-typescript mapping not found');
+
+            if (!systemConfig.map.typescript)
+                throw new Error('typescript mapping not found');
+
+            const pluginTypescriptMapping = <string>systemConfig.map[
+                'plugin-typescript'
+            ];
+            const typescriptMapping = <string>systemConfig.map.typescript;
+
+            if (!systemConfig.packages[pluginTypescriptMapping])
+                throw new Error('plugin-typescript package not found');
+
+            if (!systemConfig.packages[typescriptMapping])
+                throw new Error('typescript package not found');
+
+            systemConfig.packages[pluginTypescriptMapping].format = 'register';
+            systemConfig.packages[typescriptMapping].format = 'cjs';
+
+            systemConfig.packages[typescriptMapping].meta = {
+                ...(systemConfig.packages[typescriptMapping].meta || {}),
+                'lib/typescript.js': {
+                    exports: 'ts',
+                },
+            };
+
+            for (const coreModuleName of shimModules) {
+                if (
+                    !systemConfig.packages[typescriptMapping].map[
+                        coreModuleName
+                    ]
+                ) {
+                    systemConfig.packages[typescriptMapping].map[
+                        coreModuleName
+                    ] =
+                        '@empty';
+                }
+            }
+
+            systemConfig.transpiler = 'plugin-typescript';
+            systemConfig.typescriptOptions = <CompilerOptions>{
+                allowJs: true,
+                tsconfig: false,
+                ...presetOptions,
+            };
+
+            return systemConfig;
+        },
+    },
+};
 
 export class Context {
     private baseUrl: string;
     private dependencies: { [name: string]: string };
     private files: { [pathname: string]: string };
+    private preset: PresetName;
+    private presetOptions: { [key: string]: any };
     private processEnv: { [key: string]: string };
     private resolverClient: Client;
     private systemConfigDfd?: Deferred<SystemJSLoader.Config>;
@@ -27,8 +150,10 @@ export class Context {
         baseUrl = 'https://cdn.jsdelivr.net/npm',
         dependencies = {},
         files = {},
-        useBrowser = typeof window === 'object',
+        preset = null,
+        presetOptions = {},
         processEnv = { NODE_ENV: 'development' },
+        useBrowser = typeof window === 'object',
     }: ContextOptions = {}) {
         this.baseUrl =
             baseUrl.charAt(baseUrl.length - 1) === '/'
@@ -36,18 +161,22 @@ export class Context {
                 : baseUrl;
         this.dependencies = dependencies;
         this.files = files;
+        this.preset = preset;
+        this.presetOptions = presetOptions;
+        this.processEnv = processEnv;
         this.resolverClient = new Client({
             packageMetadataLoader: spec => this.loadPackageMetadata(spec),
         });
         this.systemConfigDfd = null;
-        this.processEnv = processEnv;
         this.useBrowser = useBrowser;
     }
 
-    private loadDependencyPackages(): Promise<Array<Package>> {
+    private loadDependencyPackages(
+        dependencies: DependencyMap
+    ): Promise<Array<Package>> {
         return Promise.all(
-            Object.keys(this.dependencies).map(name => {
-                const range = this.dependencies[name];
+            Object.keys(dependencies).map(name => {
+                const range = dependencies[name];
 
                 return this.resolverClient.load(`${name}@${range}`);
             })
@@ -82,6 +211,10 @@ export class Context {
             this.systemConfigDfd = new Deferred();
 
             try {
+                const preset: PresetDefinition = this.preset
+                    ? presets[this.preset]
+                    : null;
+                let dependencies = Object.assign({}, this.dependencies);
                 const systemConfig: SystemJSLoader.Config = {
                     map: {},
                     meta: {},
@@ -91,8 +224,16 @@ export class Context {
                         },
                     },
                 };
+
+                if (preset) {
+                    dependencies = await preset.onBeforeResolveDependencies.call(
+                        this,
+                        dependencies
+                    );
+                }
+
                 const queue = [];
-                const pkgs = await this.loadDependencyPackages();
+                const pkgs = await this.loadDependencyPackages(dependencies);
                 const seen = new Set();
 
                 for (const pkg of pkgs) {
@@ -123,10 +264,11 @@ export class Context {
                         this.useBrowser &&
                         typeof pkg.raw.browser === 'object'
                     ) {
-                        systemConfig.packages[pkgId].map = Object.assign(
-                            {},
-                            pkg.raw.browser
-                        );
+                        for (const moduleName in pkg.raw.browser) {
+                            const remapping = pkg.raw.browser[moduleName];
+                            systemConfig.packages[pkgId].map[moduleName] =
+                                remapping === false ? '@empty' : remapping;
+                        }
                     }
 
                     for (const childPkg of pkg.children.values()) {
@@ -152,25 +294,35 @@ export class Context {
 
     async run(pathname: string): Promise<any> {
         const baseSystemConfig = await this.loadSystemConfig();
+
         // Shallow clone should be enough
-        const systemConfig: SystemJSLoader.Config = {
+        let systemConfig: SystemJSLoader.Config = {
             ...baseSystemConfig,
             meta: {
                 ...baseSystemConfig.meta,
                 [`${this.baseUrl}/*`]: {
-                    loader: '@cdn-run-remote',
                     globals: {
                         process: '@cdn-run-process',
                     },
+                    loader: '@cdn-run-remote',
                 },
-                ['./*']: {
-                    loader: '@cdn-run-local',
-                    globals: {
-                        process: '@cdn-run-process',
+            },
+            packages: {
+                ...baseSystemConfig.packages,
+                '.': {
+                    ...(baseSystemConfig.packages['.'] || {}),
+                    meta: {
+                        '*': {
+                            loader: '@cdn-run-local',
+                            globals: {
+                                process: '@cdn-run-process',
+                            },
+                        },
                     },
                 },
             },
         };
+
         const system = new SystemJSLoader.constructor();
         const virtualFiles: { [pathname: string]: string } = {};
 
@@ -179,51 +331,105 @@ export class Context {
             virtualFiles[normalizedPathname] = this.files[pathname];
         }
 
+        const preset: PresetDefinition = this.preset
+            ? presets[this.preset]
+            : null;
+
+        if (preset) {
+            systemConfig = await preset.onBeforeSystemConfig.call(
+                this,
+                systemConfig,
+                this.presetOptions
+            );
+        }
+
+        const localLoader: SystemJSPlugin = {
+            fetch: (
+                spec: any,
+                systemFetch: (url: string) => Promise<string>
+            ): string | Promise<string> => {
+                const contents = virtualFiles[spec.address];
+
+                if (typeof contents === 'string') {
+                    return contents;
+                }
+
+                // Fall through to default system behaviour
+                return systemFetch(spec);
+            },
+        };
+        const processEnv = { env: this.processEnv };
+        const remoteLoader: SystemJSPlugin = {
+            fetch: (spec: any): Promise<string> =>
+                new Promise((resolve, reject) => {
+                    let done = false;
+                    const timeout = setTimeout(() => {
+                        done = true;
+
+                        return reject(
+                            new Error(
+                                `Timed out while requesting: ${spec.address}`
+                            )
+                        );
+                    }, 5000);
+
+                    return fetch(spec.address, { redirect: 'follow' }).then(
+                        res => {
+                            if (done) return;
+
+                            clearTimeout(timeout);
+
+                            if (res.status !== 200)
+                                throw new Error(
+                                    `Unexpected status code fetching ${
+                                        spec.address
+                                    }: ${res.status}`
+                                );
+
+                            return resolve(res.text());
+                        }
+                    );
+                }),
+        };
+
+        if (this.preset === PresetName.typescript) {
+            // const typescriptContext = new Context({
+            //     dependencies: {
+            //         'plugin-typescript': '^8.0.0',
+            //         typescript: '^2.7.2',
+            //     },
+            // });
+            // const TypescriptPlugin = await typescriptContext.run(
+            //     'plugin-typescript'
+            // );
+            // const localLoaderFetch = localLoader.fetch.bind(localLoader);
+            // localLoader.fetch = async (spec) => {
+            //     const source = await localLoaderFetch(spec);
+            //     const load: SystemJSModule = {
+            //         name: spec.name,
+            //         address: spec.address,
+            //         metadata: {},
+            //         source,
+            //     };
+            //     return await TypescriptPlugin.translate(load);
+            // };
+            // localLoader.instantiate = (load, systemInstantiate) => {
+            //     return TypescriptPlugin.instantiate(load, systemInstantiate);
+            // };
+            // localLoader.translate = load => {
+            //     return TypescriptPlugin.translate(load);
+            // };
+            // systemConfig.transpiler = this.preset;
+        }
+
         system.config(systemConfig);
-        system.registry.set(
-            '@cdn-run-local',
-            system.newModule({
-                fetch: (
-                    spec: any,
-                    systemFetch: (url: string) => Promise<string>
-                ): string | Promise<string> => {
-                    const contents = virtualFiles[spec.address];
+        system.registry.set('@cdn-run-local', system.newModule(localLoader));
+        system.registry.set('@cdn-run-process', system.newModule(processEnv));
+        system.registry.set('@cdn-run-remote', system.newModule(remoteLoader));
 
-                    if (typeof contents === 'string') {
-                        return contents;
-                    }
+        // const normalizedPathname = `./${this.normalizeLocalPathname(pathname)}`;
 
-                    // Fall through to default system behaviour
-                    return systemFetch(spec);
-                },
-            })
-        );
-        system.registry.set(
-            '@cdn-run-process',
-            system.newModule({
-                env: this.processEnv,
-            })
-        );
-        system.registry.set(
-            '@cdn-run-remote',
-            system.newModule({
-                fetch: (spec: any): string | Promise<string> =>
-                    fetch(spec.address, { redirect: 'follow' }).then(res => {
-                        if (res.status !== 200)
-                            throw new Error(
-                                `Unexpected status code fetching ${
-                                    spec.address
-                                }: ${res.status}`
-                            );
-
-                        return res.text();
-                    }),
-            })
-        );
-
-        const normalizedPathname = `./${this.normalizeLocalPathname(pathname)}`;
-
-        return await system.import(normalizedPathname);
+        return await system.import(pathname);
     }
 }
 

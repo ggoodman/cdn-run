@@ -14,7 +14,10 @@
             "sourceMaps": true,
             "outFiles": ["${workspaceFolder}/dist/*.js"],
             "outputCapture": "std",
-            "skipFiles": ["node_modules/**/*.js"]
+            "skipFiles": [
+                "<node_internals>/**",
+                "node_modules/**!(systemjs)/*.js"
+            ]
         }
     ]
 }
