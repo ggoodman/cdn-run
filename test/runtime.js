@@ -51,11 +51,11 @@ lab.describe('runtime', () => {
             },
             files: {
                 'index.js': `
-                        const React = require('react');
-                        const ReactDOM = require('react-dom');
+                    const React = require('react');
+                    const ReactDOM = require('react-dom');
 
-                        module.exports = { React, ReactDOM };
-                    `,
+                    module.exports = { React, ReactDOM };
+                `,
             },
         });
         const { React, ReactDOM } = await runner.run('./index');

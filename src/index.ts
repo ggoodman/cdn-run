@@ -100,7 +100,7 @@ const presets: PresetListing = {
             if (!systemConfig.packages[typescriptMapping])
                 throw new Error('typescript package not found');
 
-            systemConfig.packages[pluginTypescriptMapping].format = 'register';
+            systemConfig.packages[pluginTypescriptMapping].format = <SystemJSLoader.ModuleFormat>'system';
             systemConfig.packages[typescriptMapping].format = 'cjs';
 
             systemConfig.packages[typescriptMapping].meta = {
