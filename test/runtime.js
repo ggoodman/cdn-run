@@ -78,14 +78,14 @@ lab.describe('runtime', () => {
                     },
                     files: {
                         'widget.js': `
-                        import React from 'react';
+                            import React from 'react';
 
-                        export class Widget extends React.Component {
-                            render() {
-                                return <h1>Hello React</h1>;
-                            }
-                        };
-                    `,
+                            export class Widget extends React.Component {
+                                render() {
+                                    return <h1>Hello React</h1>;
+                                }
+                            };
+                        `,
                     },
                     preset: 'typescript',
                     presetOptions: {

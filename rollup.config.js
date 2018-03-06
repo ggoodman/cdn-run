@@ -1,5 +1,6 @@
 import commonjsPlugin from 'rollup-plugin-commonjs';
 import nodeResolvePlugin from 'rollup-plugin-node-resolve';
+import postprocessPlugin from 'rollup-plugin-postprocess';
 import typescript from 'typescript';
 import typescriptPlugin from 'rollup-plugin-typescript';
 import virtualPlugin from 'rollup-plugin-virtual';
@@ -31,10 +32,13 @@ export default [
                 ignoreGlobal: true,
             }),
             typescriptPlugin({
-                exclude: 'node_modules/**(!load-npm-dependency-graph)',
+                exclude: 'node_modules/**',
                 target: 'ES2015',
                 typescript,
             }),
+            postprocessPlugin([
+                [/\(eval\)/, '(0, eval)'],
+            ]),
         ],
     },
     {
