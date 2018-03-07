@@ -29,6 +29,9 @@
     "url": "https://github.com/ggoodman/cdn-run.git"
   },
   "license": "MIT",
+  "files": [
+    "dist"
+  ],
   "devDependencies": {
     "@types/systemjs": "^0.20.6",
     "code": "^5.2.0",
@@ -41,7 +44,8 @@
     "rollup-plugin-typescript": "^0.8.1",
     "rollup-plugin-virtual": "^1.0.1",
     "tslib": "^1.9.0",
-    "typescript": "^2.7.2"
+    "typescript": "^2.7.2",
+    "uppercamelcase": "^3.0.0"
   },
   "dependencies": {
     "cross-fetch": "^2.0.0",

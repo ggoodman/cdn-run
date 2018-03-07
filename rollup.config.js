@@ -3,6 +3,7 @@ import nodeResolvePlugin from 'rollup-plugin-node-resolve';
 import postprocessPlugin from 'rollup-plugin-postprocess';
 import typescript from 'typescript';
 import typescriptPlugin from 'rollup-plugin-typescript';
+import uppercamelcase from 'uppercamelcase';
 import virtualPlugin from 'rollup-plugin-virtual';
 
 import pkg from './package.json';
@@ -40,7 +41,7 @@ export default [
         output: {
             file: pkg.browser,
             format: 'umd',
-            name: pkg.name,
+            name: uppercamelcase(pkg.name),
             sourcemap: true,
         },
         plugins: [
@@ -71,7 +72,7 @@ export default [
         output: {
             file: pkg.main,
             format: 'umd',
-            name: pkg.name,
+            name: uppercamelcase(pkg.name),
             sourcemap: true,
         },
         plugins: [
