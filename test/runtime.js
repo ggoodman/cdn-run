@@ -101,5 +101,34 @@ lab.describe('runtime', () => {
                 expect(Widget.prototype.render).to.be.a.function();
             }
         );
+
+        lab.test(
+            `works for react with the syntax "import React, { Component } from 'react';"`,
+            { timeout: 20000 },
+            async () => {
+                const runner = new Runner.Context({
+                    dependencies: {
+                        react: '16.x',
+                    },
+                    files: {
+                        'index.js': `
+                            import React, { Component } from 'react';
+
+                            export { Component, React };
+                        `,
+                    },
+                    preset: 'typescript',
+                    presetOptions: {
+                        jsx: 'React',
+                    },
+                    useBrowser: true,
+                });
+                const { Component, React } = await runner.run('./index');
+
+                expect(React).to.be.an.object();
+                expect(React.createElement).to.be.a.function();
+                expect(Component).to.equal(React.Component);
+            }
+        );
     });
 });

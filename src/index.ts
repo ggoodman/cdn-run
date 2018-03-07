@@ -126,6 +126,8 @@ const presets: PresetListing = {
             systemConfig.transpiler = 'plugin-typescript';
             systemConfig.typescriptOptions = <CompilerOptions>{
                 allowJs: true,
+                allowSyntheticDefaultImports: true,
+                esModuleInterop: true,
                 tsconfig: false,
                 ...presetOptions,
             };
@@ -217,7 +219,12 @@ export class Context {
                 let dependencies = Object.assign({}, this.dependencies);
                 const systemConfig: SystemJSLoader.Config = {
                     map: {},
-                    meta: {},
+                    meta: {
+                        '*': <any>{
+                            esModule: true,
+                            // esmExports: true,
+                        },
+                    },
                     packages: {
                         '.': {
                             defaultExtension: 'js',
