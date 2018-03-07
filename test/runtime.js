@@ -66,6 +66,20 @@ lab.describe('runtime', () => {
         expect(ReactDOM.render).to.be.a.function();
     });
 
+    lab.test('works with custom extensions', async () => {
+        const runner = new Runner.Context({
+            alternativeExtensions: ['.jsx'],
+            files: {
+                'index.jsx': `
+                    module.exports = 'index.jsx';
+                `,
+            },
+        });
+        const exported = await runner.run('./index');
+
+        expect(exported).to.equal('index.jsx');
+    });
+
     lab.describe('the typescript preset', () => {
         lab.test(
             'allows for a custom react component with jsx',

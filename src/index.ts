@@ -27,6 +27,7 @@ interface PresetDefinition {
 type PresetListing = { [key in PresetName]: PresetDefinition };
 
 export interface ContextOptions {
+    alternativeExtensions?: Array<string>;
     baseUrl?: string;
     dependencies?: DependencyMap;
     files?: { [pathname: string]: string };
@@ -100,7 +101,9 @@ const presets: PresetListing = {
             if (!systemConfig.packages[typescriptMapping])
                 throw new Error('typescript package not found');
 
-            systemConfig.packages[pluginTypescriptMapping].format = <SystemJSLoader.ModuleFormat>'system';
+            systemConfig.packages[
+                pluginTypescriptMapping
+            ].format = <SystemJSLoader.ModuleFormat>'system';
             systemConfig.packages[typescriptMapping].format = 'cjs';
 
             systemConfig.packages[typescriptMapping].meta = {
@@ -148,7 +151,10 @@ export class Context {
     private systemConfigDfd?: Deferred<SystemJSLoader.Config>;
     private useBrowser: boolean;
 
+    protected alternativeExtensions: Array<string>;
+
     constructor({
+        alternativeExtensions = [],
         baseUrl = 'https://cdn.jsdelivr.net/npm',
         dependencies = {},
         files = {},
@@ -157,6 +163,7 @@ export class Context {
         processEnv = { NODE_ENV: 'development' },
         useBrowser = typeof window === 'object',
     }: ContextOptions = {}) {
+        this.alternativeExtensions = alternativeExtensions;
         this.baseUrl =
             baseUrl.charAt(baseUrl.length - 1) === '/'
                 ? baseUrl.slice(0, -1)
@@ -355,14 +362,52 @@ export class Context {
                 spec: any,
                 systemFetch: (url: string) => Promise<string>
             ): string | Promise<string> => {
-                const contents = virtualFiles[spec.address];
+                const originalPathname = spec.address;
+                const localPathnames = [originalPathname].concat(
+                    this.alternativeExtensions.map(ext =>
+                        originalPathname.replace(/\.js$/, ext)
+                    )
+                );
 
-                if (typeof contents === 'string') {
-                    return contents;
+                for (const pathname of localPathnames) {
+                    const contents = virtualFiles[pathname];
+
+                    if (typeof contents === 'string') {
+                        return contents;
+                    }
                 }
 
                 // Fall through to default system behaviour
-                return systemFetch(spec);
+                // with the addition of extensions fallbacks
+                const remotePathnames = this.alternativeExtensions.map(ext =>
+                    originalPathname.replace(/\.js$/, ext)
+                );
+                const loadScript = async (
+                    pathname: string
+                ): Promise<string> => {
+                    spec.address = pathname;
+                    spec.name = pathname;
+
+                    try {
+                        return await systemFetch(spec);
+                    } catch (error) {
+                        console.error(error);
+
+                        if (
+                            (remotePathnames.length &&
+                                error.code === 'ENOENT') ||
+                            error.code == 'ENOTFOUND'
+                        ) {
+                            const nextPathname = remotePathnames.shift();
+
+                            return await loadScript(nextPathname);
+                        }
+
+                        throw error;
+                    }
+                };
+
+                return loadScript(originalPathname);
             },
         };
         const processEnv = { env: this.processEnv };
