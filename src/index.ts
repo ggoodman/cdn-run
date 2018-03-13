@@ -5,7 +5,8 @@ import {
     NpmPackageVersionResponse,
 } from 'resolve-npm-dependency-graph';
 import SystemJSLoader from 'systemjs';
-import { CompilerOptions } from 'typescript';
+
+import * as TypescriptPreset from './typescript-preset';
 
 export type DependencyMap = { [name: string]: string };
 export enum PresetName {
@@ -57,87 +58,7 @@ export interface SystemJSPlugin {
 }
 
 const presets: PresetListing = {
-    typescript: {
-        onBeforeResolveDependencies: function(
-            this: Context,
-            dependencies: DependencyMap
-        ): DependencyMap {
-            if (!dependencies['plugin-typescript']) {
-                dependencies['plugin-typescript'] = '^8.0.0';
-            }
-            if (!dependencies['typescript']) {
-                dependencies['typescript'] = '^2.7.2';
-            }
-
-            return dependencies;
-        },
-        onBeforeSystemConfig: function(
-            this: Context,
-            systemConfig: SystemJSLoader.Config,
-            presetOptions: any = {}
-        ): SystemJSLoader.Config {
-            const shimModules = [
-                'crypto',
-                'fs',
-                'path',
-                'os',
-                'source-map-support',
-            ];
-
-            if (!systemConfig.map['plugin-typescript'])
-                throw new Error('plugin-typescript mapping not found');
-
-            if (!systemConfig.map.typescript)
-                throw new Error('typescript mapping not found');
-
-            const pluginTypescriptMapping = <string>systemConfig.map[
-                'plugin-typescript'
-            ];
-            const typescriptMapping = <string>systemConfig.map.typescript;
-
-            if (!systemConfig.packages[pluginTypescriptMapping])
-                throw new Error('plugin-typescript package not found');
-
-            if (!systemConfig.packages[typescriptMapping])
-                throw new Error('typescript package not found');
-
-            systemConfig.packages[
-                pluginTypescriptMapping
-            ].format = <SystemJSLoader.ModuleFormat>'system';
-            systemConfig.packages[typescriptMapping].format = 'cjs';
-
-            systemConfig.packages[typescriptMapping].meta = {
-                ...(systemConfig.packages[typescriptMapping].meta || {}),
-                'lib/typescript.js': {
-                    exports: 'ts',
-                },
-            };
-
-            for (const coreModuleName of shimModules) {
-                if (
-                    !systemConfig.packages[typescriptMapping].map[
-                        coreModuleName
-                    ]
-                ) {
-                    systemConfig.packages[typescriptMapping].map[
-                        coreModuleName
-                    ] =
-                        '@empty';
-                }
-            }
-
-            systemConfig.transpiler = 'plugin-typescript';
-            systemConfig.typescriptOptions = <CompilerOptions>{
-                allowJs: true,
-                allowSyntheticDefaultImports: true,
-                esModuleInterop: true,
-                tsconfig: false,
-                ...presetOptions,
-            };
-
-            return systemConfig;
-        },
-    },
+    typescript: TypescriptPreset,
 };
 
 export class Context {
@@ -152,6 +73,8 @@ export class Context {
     private useBrowser: boolean;
 
     protected alternativeExtensions: Array<string>;
+
+    public system: SystemJSLoader.System;
 
     constructor({
         alternativeExtensions = [],
@@ -176,6 +99,7 @@ export class Context {
         this.resolverClient = new Client({
             packageMetadataLoader: spec => this.loadPackageMetadata(spec),
         });
+        this.system = new SystemJSLoader.constructor();
         this.systemConfigDfd = null;
         this.useBrowser = useBrowser;
     }
@@ -337,11 +261,10 @@ export class Context {
             },
         };
 
-        const system = new SystemJSLoader.constructor();
         const virtualFiles: { [pathname: string]: string } = {};
 
         for (const pathname in this.files) {
-            const normalizedPathname = await system.resolve(pathname);
+            const normalizedPathname = await this.system.resolve(pathname);
             virtualFiles[normalizedPathname] = this.files[pathname];
         }
 
@@ -444,44 +367,22 @@ export class Context {
                 }),
         };
 
-        if (this.preset === PresetName.typescript) {
-            // const typescriptContext = new Context({
-            //     dependencies: {
-            //         'plugin-typescript': '^8.0.0',
-            //         typescript: '^2.7.2',
-            //     },
-            // });
-            // const TypescriptPlugin = await typescriptContext.run(
-            //     'plugin-typescript'
-            // );
-            // const localLoaderFetch = localLoader.fetch.bind(localLoader);
-            // localLoader.fetch = async (spec) => {
-            //     const source = await localLoaderFetch(spec);
-            //     const load: SystemJSModule = {
-            //         name: spec.name,
-            //         address: spec.address,
-            //         metadata: {},
-            //         source,
-            //     };
-            //     return await TypescriptPlugin.translate(load);
-            // };
-            // localLoader.instantiate = (load, systemInstantiate) => {
-            //     return TypescriptPlugin.instantiate(load, systemInstantiate);
-            // };
-            // localLoader.translate = load => {
-            //     return TypescriptPlugin.translate(load);
-            // };
-            // systemConfig.transpiler = this.preset;
-        }
+        this.system.config(systemConfig);
+        this.system.registry.set(
+            '@cdn-run-local',
+            this.system.newModule(localLoader)
+        );
+        this.system.registry.set(
+            '@cdn-run-process',
+            this.system.newModule(processEnv)
+        );
+        this.system.registry.set(
+            '@cdn-run-remote',
+            this.system.newModule(remoteLoader)
+        );
+        this.system.trace = true;
 
-        system.config(systemConfig);
-        system.registry.set('@cdn-run-local', system.newModule(localLoader));
-        system.registry.set('@cdn-run-process', system.newModule(processEnv));
-        system.registry.set('@cdn-run-remote', system.newModule(remoteLoader));
-
-        // const normalizedPathname = `./${this.normalizeLocalPathname(pathname)}`;
-
-        return await system.import(pathname);
+        return await this.system.import(pathname);
     }
 }
 
