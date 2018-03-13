@@ -39,8 +39,8 @@ export interface ContextOptions {
 }
 
 export interface FilesHost {
-    get: (filename: string) => string | Promise<string>;
-    keys: () => IterableIterator<string> | Promise<IterableIterator<string>>;
+    get: (pathname: string) => string | Promise<string>;
+    has: (pathname: string) => boolean | Promise<boolean>;
 }
 
 export interface SystemJSModule {
@@ -194,12 +194,6 @@ export class Context {
         }
 
         const system = new SystemJSLoader.constructor();
-        const virtualFiles: { [pathname: string]: string } = {};
-
-        for (const pathname of await this.files.keys()) {
-            const normalizedPathname = await system.resolve(pathname);
-            virtualFiles[normalizedPathname] = await this.files.get(pathname);
-        }
 
         if (preset) {
             await preset.onBeforeSystemConfig.call(
@@ -209,11 +203,14 @@ export class Context {
             );
         }
         const localLoader: SystemJSPlugin = {
-            fetch: (
+            fetch: async (
                 spec: any,
                 systemFetch: (url: string) => Promise<string>
-            ): string | Promise<string> => {
-                const originalPathname = spec.address;
+            ): Promise<string> => {
+                const originalPathname =
+                    spec.address.indexOf(system.baseURL) === 0
+                        ? spec.address.slice(system.baseURL.length)
+                        : spec.address;
                 const localPathnames = [originalPathname].concat(
                     this.alternativeExtensions.map(ext =>
                         originalPathname.replace(/\.js$/, ext)
@@ -221,11 +218,9 @@ export class Context {
                 );
 
                 for (const pathname of localPathnames) {
-                    const contents = virtualFiles[pathname];
+                    const exists = await this.files.has(pathname);
 
-                    if (typeof contents === 'string') {
-                        return contents;
-                    }
+                    if (exists) return await this.files.get(pathname);
                 }
 
                 // Fall through to default system behaviour
