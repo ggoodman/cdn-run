@@ -69,12 +69,10 @@ export class Context {
     private presetOptions: { [key: string]: any };
     private processEnv: { [key: string]: string };
     private resolverClient: Client;
-    private systemConfigDfd?: Deferred<SystemJSLoader.Config>;
+    private systemLoaderPromise?: Promise<SystemJSLoader.System>;
     private useBrowser: boolean;
 
     protected alternativeExtensions: Array<string>;
-
-    public system: SystemJSLoader.System;
 
     constructor({
         alternativeExtensions = [],
@@ -99,145 +97,22 @@ export class Context {
         this.resolverClient = new Client({
             packageMetadataLoader: spec => this.loadPackageMetadata(spec),
         });
-        this.system = new SystemJSLoader.constructor();
-        this.systemConfigDfd = null;
+        this.systemLoaderPromise = null;
         this.useBrowser = useBrowser;
     }
 
-    private loadDependencyPackages(
-        dependencies: DependencyMap
-    ): Promise<Array<Package>> {
-        return Promise.all(
-            Object.keys(dependencies).map(name => {
-                const range = dependencies[name];
-
-                return this.resolverClient.load(`${name}@${range}`);
-            })
-        );
-    }
-
-    private async loadPackageMetadata(
-        spec: string
-    ): Promise<NpmPackageVersionResponse> {
-        const res = await fetch(`${this.baseUrl}/${spec}/package.json`, {
-            redirect: 'follow',
-        });
-
-        if (res.status !== 200) {
-            throw new Error(
-                `Unexpected status code loading '${spec}': ${res.status}`
-            );
-        }
-
-        return res.json();
-    }
-
-    private normalizeLocalPathname(pathname: string): string {
-        return pathname
-            .split('/')
-            .filter(Boolean)
-            .join('/');
-    }
-
-    async loadSystemConfig(): Promise<SystemJSLoader.Config> {
-        if (!this.systemConfigDfd) {
-            this.systemConfigDfd = new Deferred();
-
-            try {
-                const preset: PresetDefinition = this.preset
-                    ? presets[this.preset]
-                    : null;
-                let dependencies = Object.assign({}, this.dependencies);
-                const systemConfig: SystemJSLoader.Config = {
-                    map: {},
-                    meta: {
-                        '*': <any>{
-                            esModule: true,
-                            // esmExports: true,
-                        },
-                    },
-                    packages: {
-                        '.': {
-                            defaultExtension: 'js',
-                        },
-                    },
-                };
-
-                if (preset) {
-                    dependencies = await preset.onBeforeResolveDependencies.call(
-                        this,
-                        dependencies
-                    );
-                }
-
-                const queue = [];
-                const pkgs = await this.loadDependencyPackages(dependencies);
-                const seen = new Set();
-
-                for (const pkg of pkgs) {
-                    const pkgId = `${this.baseUrl}/${pkg.name}@${pkg.version}`;
-                    systemConfig.map[pkg.name] = pkgId;
-                    queue.push(pkg);
-                }
-
-                while (queue.length) {
-                    const pkg = queue.shift();
-
-                    if (seen.has(pkg)) continue;
-                    else seen.add(pkg);
-
-                    const pkgId = `${this.baseUrl}/${pkg.name}@${pkg.version}`;
-
-                    systemConfig.packages[pkgId] = {
-                        defaultExtension: 'js',
-                        map: {},
-                        main:
-                            this.useBrowser &&
-                            typeof pkg.raw.browser === 'string'
-                                ? pkg.raw.browser
-                                : pkg.raw.main || 'index.js',
-                    };
-
-                    if (
-                        this.useBrowser &&
-                        typeof pkg.raw.browser === 'object'
-                    ) {
-                        for (const moduleName in pkg.raw.browser) {
-                            const remapping = pkg.raw.browser[moduleName];
-                            systemConfig.packages[pkgId].map[moduleName] =
-                                remapping === false ? '@empty' : remapping;
-                        }
-                    }
-
-                    for (const childPkg of pkg.children.values()) {
-                        const childPkgId = `${this.baseUrl}/${childPkg.name}@${
-                            childPkg.version
-                        }`;
-
-                        systemConfig.packages[pkgId].map[
-                            childPkg.name
-                        ] = childPkgId;
-
-                        queue.push(childPkg);
-                    }
-                }
-
-                return systemConfig;
-            } catch (error) {
-                this.systemConfigDfd.reject(error);
-            }
-        }
-        return this.systemConfigDfd.promise;
-    }
-
-    async run(pathname: string): Promise<any> {
-        const baseSystemConfig = await this.loadSystemConfig();
-
-        // Shallow clone should be enough
-        let systemConfig: SystemJSLoader.Config = {
-            ...baseSystemConfig,
+    private async createSystemLoader(): Promise<SystemJSLoader.System> {
+        const preset: PresetDefinition = this.preset
+            ? presets[this.preset]
+            : null;
+        let dependencies = Object.assign({}, this.dependencies);
+        const systemConfig: SystemJSLoader.Config = {
+            map: {},
             meta: {
-                ...baseSystemConfig.meta,
+                '*': <any>{
+                    esModule: true,
+                    // esmExports: true,
+                },
                 [`${this.baseUrl}/*`]: {
                     globals: {
                         process: '@cdn-run-process',
@@ -246,9 +121,8 @@ export class Context {
                 },
             },
             packages: {
-                ...baseSystemConfig.packages,
                 '.': {
-                    ...(baseSystemConfig.packages['.'] || {}),
+                    defaultExtension: 'js',
                     meta: {
                         '*': {
                             loader: '@cdn-run-local',
@@ -261,25 +135,74 @@ export class Context {
             },
         };
 
+        if (preset) {
+            dependencies = await preset.onBeforeResolveDependencies.call(
+                this,
+                dependencies
+            );
+        }
+
+        const queue = [];
+        const pkgs = await this.loadDependencyPackages(dependencies);
+        const seen = new Set();
+
+        for (const pkg of pkgs) {
+            const pkgId = `${this.baseUrl}/${pkg.name}@${pkg.version}`;
+            systemConfig.map[pkg.name] = pkgId;
+            queue.push(pkg);
+        }
+
+        while (queue.length) {
+            const pkg = queue.shift();
+
+            if (seen.has(pkg)) continue;
+            else seen.add(pkg);
+
+            const pkgId = `${this.baseUrl}/${pkg.name}@${pkg.version}`;
+
+            systemConfig.packages[pkgId] = {
+                defaultExtension: 'js',
+                map: {},
+                main:
+                    this.useBrowser && typeof pkg.raw.browser === 'string'
+                        ? pkg.raw.browser
+                        : pkg.raw.main || 'index.js',
+            };
+
+            if (this.useBrowser && typeof pkg.raw.browser === 'object') {
+                for (const moduleName in pkg.raw.browser) {
+                    const remapping = pkg.raw.browser[moduleName];
+                    systemConfig.packages[pkgId].map[moduleName] =
+                        remapping === false ? '@empty' : remapping;
+                }
+            }
+
+            for (const childPkg of pkg.children.values()) {
+                const childPkgId = `${this.baseUrl}/${childPkg.name}@${
+                    childPkg.version
+                }`;
+
+                systemConfig.packages[pkgId].map[childPkg.name] = childPkgId;
+
+                queue.push(childPkg);
+            }
+        }
+
+        const system = new SystemJSLoader.constructor();
         const virtualFiles: { [pathname: string]: string } = {};
 
         for (const pathname in this.files) {
-            const normalizedPathname = await this.system.resolve(pathname);
+            const normalizedPathname = await system.resolve(pathname);
             virtualFiles[normalizedPathname] = this.files[pathname];
         }
 
-        const preset: PresetDefinition = this.preset
-            ? presets[this.preset]
-            : null;
-
         if (preset) {
-            systemConfig = await preset.onBeforeSystemConfig.call(
+            await preset.onBeforeSystemConfig.call(
                 this,
                 systemConfig,
                 this.presetOptions
             );
         }
-
         const localLoader: SystemJSPlugin = {
             fetch: (
                 spec: any,
@@ -367,22 +290,62 @@ export class Context {
                 }),
         };
 
-        this.system.config(systemConfig);
-        this.system.registry.set(
-            '@cdn-run-local',
-            this.system.newModule(localLoader)
-        );
-        this.system.registry.set(
-            '@cdn-run-process',
-            this.system.newModule(processEnv)
-        );
-        this.system.registry.set(
-            '@cdn-run-remote',
-            this.system.newModule(remoteLoader)
-        );
-        this.system.trace = true;
+        system.config(systemConfig);
+        system.registry.set('@cdn-run-local', system.newModule(localLoader));
+        system.registry.set('@cdn-run-process', system.newModule(processEnv));
+        system.registry.set('@cdn-run-remote', system.newModule(remoteLoader));
+        system.trace = true;
 
-        return await this.system.import(pathname);
+        return system;
+    }
+
+    private loadDependencyPackages(
+        dependencies: DependencyMap
+    ): Promise<Array<Package>> {
+        return Promise.all(
+            Object.keys(dependencies).map(name => {
+                const range = dependencies[name];
+
+                return this.resolverClient.load(`${name}@${range}`);
+            })
+        );
+    }
+
+    private async loadPackageMetadata(
+        spec: string
+    ): Promise<NpmPackageVersionResponse> {
+        const res = await fetch(`${this.baseUrl}/${spec}/package.json`, {
+            redirect: 'follow',
+        });
+
+        if (res.status !== 200) {
+            throw new Error(
+                `Unexpected status code loading '${spec}': ${res.status}`
+            );
+        }
+
+        return res.json();
+    }
+
+    private normalizeLocalPathname(pathname: string): string {
+        return pathname
+            .split('/')
+            .filter(Boolean)
+            .join('/');
+    }
+
+    async getSystemLoader(): Promise<SystemJSLoader.System> {
+        if (!this.systemLoaderPromise) {
+            this.systemLoaderPromise = this.createSystemLoader();
+        }
+
+        return await this.systemLoaderPromise;
+    }
+
+    async run(pathname: string): Promise<any> {
+        const system = await this.getSystemLoader();
+
+        return await system.import(pathname);
     }
 }
 
