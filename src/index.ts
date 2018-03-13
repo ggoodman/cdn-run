@@ -31,11 +31,16 @@ export interface ContextOptions {
     alternativeExtensions?: Array<string>;
     baseUrl?: string;
     dependencies?: DependencyMap;
-    files?: { [pathname: string]: string };
+    files?: FilesHost;
     preset?: PresetName;
     presetOptions?: { [key: string]: any };
     processEnv?: { [key: string]: string };
     useBrowser?: boolean;
+}
+
+export interface FilesHost {
+    get: (filename: string) => string | Promise<string>;
+    keys: () => IterableIterator<string> | Promise<IterableIterator<string>>;
 }
 
 export interface SystemJSModule {
@@ -64,7 +69,7 @@ const presets: PresetListing = {
 export class Context {
     private baseUrl: string;
     private dependencies: { [name: string]: string };
-    private files: { [pathname: string]: string };
+    private files: FilesHost;
     private preset: PresetName;
     private presetOptions: { [key: string]: any };
     private processEnv: { [key: string]: string };
@@ -78,7 +83,7 @@ export class Context {
         alternativeExtensions = [],
         baseUrl = 'https://cdn.jsdelivr.net/npm',
         dependencies = {},
-        files = {},
+        files = new Map(),
         preset = null,
         presetOptions = {},
         processEnv = { NODE_ENV: 'development' },
@@ -191,9 +196,9 @@ export class Context {
         const system = new SystemJSLoader.constructor();
         const virtualFiles: { [pathname: string]: string } = {};
 
-        for (const pathname in this.files) {
+        for (const pathname of await this.files.keys()) {
             const normalizedPathname = await system.resolve(pathname);
-            virtualFiles[normalizedPathname] = this.files[pathname];
+            virtualFiles[normalizedPathname] = await this.files.get(pathname);
         }
 
         if (preset) {

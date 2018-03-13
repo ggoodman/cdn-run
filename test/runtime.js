@@ -49,14 +49,17 @@ lab.describe('runtime', () => {
                 react: '16.x',
                 'react-dom': '16.x',
             },
-            files: {
-                'index.js': `
-                    const React = require('react');
-                    const ReactDOM = require('react-dom');
+            files: new Map([
+                [
+                    'index.js',
+                    `
+                        const React = require('react');
+                        const ReactDOM = require('react-dom');
 
-                    module.exports = { React, ReactDOM };
-                `,
-            },
+                        module.exports = { React, ReactDOM };
+                    `,
+                ],
+            ]),
         });
         const { React, ReactDOM } = await runner.run('./index');
 
@@ -69,11 +72,14 @@ lab.describe('runtime', () => {
     lab.test('works with custom extensions', async () => {
         const runner = new Runner.Context({
             alternativeExtensions: ['.jsx'],
-            files: {
-                'index.jsx': `
-                    module.exports = 'index.jsx';
-                `,
-            },
+            files: new Map([
+                [
+                    'index.jsx',
+                    `
+                        module.exports = 'index.jsx';
+                    `,
+                ],
+            ]),
         });
         const exported = await runner.run('./index');
 
@@ -90,17 +96,20 @@ lab.describe('runtime', () => {
                         react: '16.x',
                         'react-dom': '16.x',
                     },
-                    files: {
-                        'widget.js': `
-                            import React from 'react';
+                    files: new Map([
+                        [
+                            'widget.js',
+                            `
+                                import React from 'react';
 
-                            export class Widget extends React.Component {
-                                render() {
-                                    return <h1>Hello React</h1>;
-                                }
-                            };
-                        `,
-                    },
+                                export class Widget extends React.Component {
+                                    render() {
+                                        return <h1>Hello React</h1>;
+                                    }
+                                };
+                            `,
+                        ],
+                    ]),
                     preset: 'typescript',
                     presetOptions: {
                         jsx: 'React',
@@ -124,13 +133,16 @@ lab.describe('runtime', () => {
                     dependencies: {
                         react: '16.x',
                     },
-                    files: {
-                        'index.js': `
-                            import React, { Component } from 'react';
+                    files: new Map([
+                        [
+                            'index.js',
+                            `
+                                import React, { Component } from 'react';
 
-                            export { Component, React };
-                        `,
-                    },
+                                export { Component, React };
+                            `,
+                        ],
+                    ]),
                     preset: 'typescript',
                     presetOptions: {
                         jsx: 'React',
