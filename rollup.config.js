@@ -64,7 +64,18 @@ export default [
                 target: 'ES2015',
                 typescript,
             }),
-            postprocessPlugin([[/\(eval\)/, '(0, eval)'], [patchRx, patch]]),
+            postprocessPlugin([
+                [/\(eval\)/, '(0, eval)'],
+                [patchRx, patch],
+                [
+                    new RegExp(
+                        escape(
+                            '(records.hasOwnProperty(key) && !records[key].linkRecord)'
+                        )
+                    ),
+                    '(records.hasOwnProperty(key) && records[key].linkRecord)',
+                ],
+            ]),
         ],
     },
     {
@@ -133,7 +144,18 @@ export default [
                 target: 'ES2017',
                 typescript,
             }),
-            postprocessPlugin([[/\(eval\)/, '(0, eval)'], [patchRx, patch]]),
+            postprocessPlugin([
+                [/\(eval\)/, '(0, eval)'],
+                [patchRx, patch],
+                [
+                    new RegExp(
+                        escape(
+                            '(records.hasOwnProperty(key) && !records[key].linkRecord)'
+                        )
+                    ),
+                    '(records.hasOwnProperty(key) && records[key].linkRecord)',
+                ],
+            ]),
         ],
     },
 ];
