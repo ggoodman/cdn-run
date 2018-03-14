@@ -73,7 +73,7 @@ export default [
                             '(records.hasOwnProperty(key) && !records[key].linkRecord)'
                         )
                     ),
-                    '(records.hasOwnProperty(key) && records[key].linkRecord)',
+                    '(records.hasOwnProperty(key) && (records[key].linkRecord || records[key].loadError))',
                 ],
             ]),
         ],
@@ -113,7 +113,7 @@ export default [
                             '(records.hasOwnProperty(key) && !records[key].linkRecord)'
                         )
                     ),
-                    '(records.hasOwnProperty(key) && records[key].linkRecord)',
+                    '(records.hasOwnProperty(key) && (records[key].linkRecord || records[key].loadError))',
                 ],
             ]),
         ],
@@ -153,7 +153,7 @@ export default [
                             '(records.hasOwnProperty(key) && !records[key].linkRecord)'
                         )
                     ),
-                    '(records.hasOwnProperty(key) && records[key].linkRecord)',
+                    '(records.hasOwnProperty(key) && (records[key].linkRecord || records[key].loadError))',
                 ],
             ]),
         ],
