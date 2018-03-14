@@ -86,6 +86,39 @@ lab.describe('runtime', () => {
         expect(exported).to.equal('index.jsx');
     });
 
+    lab.test('supports reloading after an error', async () => {
+        const fileGenerations = [
+            `module.exports = 0;`,
+            `module.exports = require('i-should-not-exist.js');`,
+            `module.exports = 2;`,
+        ]
+        const runner = new Runner.Context({
+            files: {
+                get: () => fileGenerations[fileGeneration],
+                has: filename => filename === 'index.js',
+            },
+        });
+
+        const system = await runner.getSystemLoader();
+        const resolvedPath = await system.resolve('./index.js');
+
+        let fileGeneration = 0;
+
+        expect(await runner.run('./index.js')).to.equal(fileGeneration);
+        fileGeneration++;
+        system.registry.delete(resolvedPath);
+
+        try {
+            await runner.run('./index.js');
+        } catch (error) {
+            expect(error).to.be.an.error();
+        }
+        fileGeneration++;
+        system.registry.delete(resolvedPath);
+
+        expect(await runner.run('./index.js')).to.equal(fileGeneration);
+    });
+
     lab.describe('the typescript preset', () => {
         lab.test(
             'allows for a custom react component with jsx',

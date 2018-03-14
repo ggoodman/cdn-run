@@ -18,11 +18,11 @@ function escape(str) {
 // The following patches that behaviour in the built assets
 const patchRx = new RegExp(
     `if (moduleDefault && moduleDefault.__esModule) {
-    for (var p in moduleDefault) {
-      if (Object.hasOwnProperty.call(moduleDefault, p))
-        moduleObj[p] = moduleDefault[p];
-    }
-  }`
+        for (var p in moduleDefault) {
+        if (Object.hasOwnProperty.call(moduleDefault, p))
+            moduleObj[p] = moduleDefault[p];
+        }
+    }`
         .split('\n')
         .map(line => escape(line.trim()))
         .join('\\s*\\n\\s*')
@@ -93,7 +93,18 @@ export default [
                 target: 'ES2015',
                 typescript,
             }),
-            postprocessPlugin([[/\(eval\)/, '(0, eval)'], [patchRx, patch]]),
+            postprocessPlugin([
+                [/\(eval\)/, '(0, eval)'],
+                [patchRx, patch],
+                [
+                    new RegExp(
+                        escape(
+                            '(records.hasOwnProperty(key) && !records[key].linkRecord)'
+                        )
+                    ),
+                    '(records.hasOwnProperty(key) && records[key].linkRecord)',
+                ],
+            ]),
         ],
     },
     {
