@@ -8,7 +8,7 @@ import virtualPlugin from 'rollup-plugin-virtual';
 
 import pkg from './package.json';
 
-function escape(str) {
+function escapeRx(str) {
     return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
 }
 
@@ -24,7 +24,7 @@ const patchRx = new RegExp(
         }
     }`
         .split('\n')
-        .map(line => escape(line.trim()))
+        .map(line => escapeRx(line.trim()))
         .join('\\s*\\n\\s*')
 );
 
@@ -69,7 +69,7 @@ export default [
                 [patchRx, patch],
                 [
                     new RegExp(
-                        escape(
+                        escapeRx(
                             '(records.hasOwnProperty(key) && !records[key].linkRecord)'
                         )
                     ),
@@ -109,7 +109,7 @@ export default [
                 [patchRx, patch],
                 [
                     new RegExp(
-                        escape(
+                        escapeRx(
                             '(records.hasOwnProperty(key) && !records[key].linkRecord)'
                         )
                     ),
@@ -149,7 +149,7 @@ export default [
                 [patchRx, patch],
                 [
                     new RegExp(
-                        escape(
+                        escapeRx(
                             '(records.hasOwnProperty(key) && !records[key].linkRecord)'
                         )
                     ),
