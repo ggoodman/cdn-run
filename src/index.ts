@@ -28,7 +28,7 @@ interface PresetDefinition {
 type PresetListing = { [key in PresetName]: PresetDefinition };
 
 export interface ContextOptions {
-    alternativeExtensions?: Array<string>;
+    defaultExtensions?: Array<string>;
     baseUrl?: string;
     dependencies?: DependencyMap;
     files?: FilesHost;
@@ -52,13 +52,14 @@ export interface SystemJSModule {
 
 export interface SystemJSPlugin {
     fetch?(
-        spec: any,
-        systemFetch: (spec: any) => Promise<string>
+        load: SystemJSModule,
+        systemFetch: (load: SystemJSModule) => string | Promise<string>
     ): string | Promise<string>;
     instantiate?(
         load: SystemJSModule,
         systemInstantiate: (load: SystemJSModule) => object | Promise<object>
     ): object | Promise<object>;
+    locate?(load: SystemJSModule): string | Promise<string>;
     translate?(load: SystemJSModule): string | Promise<string>;
 }
 
@@ -77,10 +78,10 @@ export class Context {
     private systemLoaderPromise?: Promise<SystemJSLoader.System>;
     private useBrowser: boolean;
 
-    protected alternativeExtensions: Array<string>;
+    protected defaultExtensions: Array<string>;
 
     constructor({
-        alternativeExtensions = [],
+        defaultExtensions = ['.js'],
         baseUrl = 'https://cdn.jsdelivr.net/npm',
         dependencies = {},
         files = new Map(),
@@ -89,7 +90,7 @@ export class Context {
         processEnv = { NODE_ENV: 'development' },
         useBrowser = typeof window === 'object',
     }: ContextOptions = {}) {
-        this.alternativeExtensions = alternativeExtensions;
+        this.defaultExtensions = defaultExtensions;
         this.baseUrl =
             baseUrl.charAt(baseUrl.length - 1) === '/'
                 ? baseUrl.slice(0, -1)
@@ -127,7 +128,6 @@ export class Context {
             },
             packages: {
                 '.': {
-                    defaultExtension: 'js',
                     meta: {
                         '*': {
                             loader: '@cdn-run-local',
@@ -204,19 +204,21 @@ export class Context {
         }
         const localLoader: SystemJSPlugin = {
             fetch: async (
-                spec: any,
-                systemFetch: (url: string) => Promise<string>
+                load: SystemJSModule,
+                systemFetch: (load: SystemJSModule) => Promise<string>
             ): Promise<string> => {
+                const extRx = /\.(js|jsx|ts|tsx)$/i;
                 const originalPathname =
-                    spec.address.indexOf(system.baseURL) === 0
-                        ? spec.address.slice(system.baseURL.length)
-                        : spec.address;
+                    load.name.indexOf(system.baseURL) === 0
+                        ? load.name.slice(system.baseURL.length)
+                        : load.name;
                 const localPathnames = [originalPathname].concat(
-                    this.alternativeExtensions.map(ext =>
-                        originalPathname.replace(/\.js$/, ext)
+                    this.defaultExtensions.map(ext =>
+                        originalPathname.replace(extRx, ext)
                     )
                 );
 
+                // First try loading from the files host
                 for (const pathname of localPathnames) {
                     const exists = await this.files.has(pathname);
 
@@ -225,17 +227,16 @@ export class Context {
 
                 // Fall through to default system behaviour
                 // with the addition of extensions fallbacks
-                const remotePathnames = this.alternativeExtensions.map(ext =>
-                    originalPathname.replace(/\.js$/, ext)
+                const remotePathnames = localPathnames.map(
+                    pathname => `${system.baseURL}${pathname}`
                 );
                 const loadScript = async (
                     pathname: string
                 ): Promise<string> => {
-                    spec.address = pathname;
-                    spec.name = pathname;
+                    load.address = pathname;
 
                     try {
-                        return await systemFetch(spec);
+                        return await systemFetch(load);
                     } catch (error) {
                         console.error(error);
 
@@ -254,6 +255,29 @@ export class Context {
                 };
 
                 return loadScript(originalPathname);
+            },
+            locate: async (load: SystemJSModule): Promise<string> => {
+                if (!await this.files.has(load.name)) {
+                    const baseUrl = system.baseURL;
+                    const pathname =
+                        load.name.indexOf(baseUrl) === 0
+                            ? load.name.slice(baseUrl.length)
+                            : load.name;
+                    const extRx = /\.(js|jsx|ts|tsx)$/i;
+
+                    for (const extension of this.defaultExtensions) {
+                        const sourcePathname = pathname.replace(
+                            extRx,
+                            extension
+                        );
+
+                        if (await this.files.has(sourcePathname)) {
+                            return `${baseUrl}${sourcePathname}`;
+                        }
+                    }
+                }
+
+                return load.name;
             },
         };
         const processEnv = { env: this.processEnv };

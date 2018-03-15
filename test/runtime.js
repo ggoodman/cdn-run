@@ -71,7 +71,7 @@ lab.describe('runtime', () => {
 
     lab.test('works with custom extensions', async () => {
         const runner = new Runner.Context({
-            alternativeExtensions: ['.jsx'],
+            defaultExtensions: ['.jsx'],
             files: new Map([
                 [
                     'index.jsx',
