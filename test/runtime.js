@@ -91,7 +91,7 @@ lab.describe('runtime', () => {
             `module.exports = 0;`,
             `module.exports = require('i-should-not-exist.js');`,
             `module.exports = 2;`,
-        ]
+        ];
         const runner = new Runner.Context({
             files: {
                 get: () => fileGenerations[fileGeneration],
@@ -187,6 +187,30 @@ lab.describe('runtime', () => {
                 expect(React).to.be.an.object();
                 expect(React.createElement).to.be.a.function();
                 expect(Component).to.equal(React.Component);
+            }
+        );
+
+        lab.test(
+            'works with custom extensions for files not found in the files host',
+            async () => {
+                const runner = new Runner.Context({
+                    defaultExtensions: ['.js', '.jsx', '.ts', '.tsx'],
+                    preset: 'typescript',
+                });
+
+                // Note: relative paths for cdn-run in node are based on process.cwd()
+                expect(
+                    (await runner.run('./fixtures/extension-js')).extension
+                ).to.equal('js');
+                expect(
+                    (await runner.run('./fixtures/extension-jsx')).extension
+                ).to.equal('jsx');
+                expect(
+                    (await runner.run('./fixtures/extension-ts')).extension
+                ).to.equal('ts');
+                expect(
+                    (await runner.run('./fixtures/extension-tsx')).extension
+                ).to.equal('tsx');
             }
         );
     });

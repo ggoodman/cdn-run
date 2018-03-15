@@ -111,15 +111,17 @@ export class Context {
         const preset: PresetDefinition = this.preset
             ? presets[this.preset]
             : null;
-        let dependencies = Object.assign({}, this.dependencies);
+        const system = new SystemJSLoader.constructor();
+        const localRoot = system.baseURL.replace(
+            /^([a-zA-Z]+:\/\/)([^\/]*)\/.*$/,
+            '$1$2'
+        );
         const systemConfig: SystemJSLoader.Config = {
+            depCache: {},
             map: {},
             meta: {
-                '*': <any>{
+                [`${this.baseUrl}/*`]: <any>{
                     esModule: true,
-                    // esmExports: true,
-                },
-                [`${this.baseUrl}/*`]: {
                     globals: {
                         process: '@cdn-run-process',
                     },
@@ -127,9 +129,11 @@ export class Context {
                 },
             },
             packages: {
-                '.': {
+                [`${localRoot}/`]: {
                     meta: {
-                        '*': {
+                        '*': <any>{
+                            esModule: true,
+                            // esmExports: true,
                             loader: '@cdn-run-local',
                             globals: {
                                 process: '@cdn-run-process',
@@ -139,6 +143,12 @@ export class Context {
                 },
             },
         };
+
+        if (system._nodeRequire) {
+            systemConfig.baseURL = `file://${process.cwd()}`;
+        }
+
+        let dependencies = Object.assign({}, this.dependencies);
 
         if (preset) {
             dependencies = await preset.onBeforeResolveDependencies.call(
@@ -165,6 +175,12 @@ export class Context {
 
             const pkgId = `${this.baseUrl}/${pkg.name}@${pkg.version}`;
 
+            // Preloading is broken in node so only set it up when in
+            // the browser
+            if (!system._nodeRequire) {
+                systemConfig.depCache[pkgId] = [];
+            }
+
             systemConfig.packages[pkgId] = {
                 defaultExtension: 'js',
                 map: {},
@@ -187,13 +203,17 @@ export class Context {
                     childPkg.version
                 }`;
 
+                // Provide hints to SystemJS about the dependency graph
+                // when in the browser
+                if (!system._nodeRequire) {
+                    systemConfig.depCache[pkgId].push(childPkgId);
+                }
+
                 systemConfig.packages[pkgId].map[childPkg.name] = childPkgId;
 
                 queue.push(childPkg);
             }
         }
-
-        const system = new SystemJSLoader.constructor();
 
         if (preset) {
             await preset.onBeforeSystemConfig.call(
@@ -227,34 +247,33 @@ export class Context {
 
                 // Fall through to default system behaviour
                 // with the addition of extensions fallbacks
-                const remotePathnames = localPathnames.map(
-                    pathname => `${system.baseURL}${pathname}`
+                const remotePathnames = this.defaultExtensions.reduce(
+                    (acc, ext) => {
+                        const mappedPathname = load.name.replace(extRx, ext);
+
+                        if (!acc.includes(mappedPathname)) {
+                            acc.push(mappedPathname);
+                        }
+
+                        return acc;
+                    },
+                    [load.name]
                 );
-                const loadScript = async (
-                    pathname: string
-                ): Promise<string> => {
-                    load.address = pathname;
+
+                while (remotePathnames.length) {
+                    load.address = remotePathnames.shift();
 
                     try {
                         return await systemFetch(load);
                     } catch (error) {
-                        console.error(error);
-
-                        if (
-                            (remotePathnames.length &&
-                                error.code === 'ENOENT') ||
-                            error.code == 'ENOTFOUND'
-                        ) {
-                            const nextPathname = remotePathnames.shift();
-
-                            return await loadScript(nextPathname);
-                        }
-
-                        throw error;
+                        // console.warn(error);
                     }
-                };
+                }
 
-                return loadScript(originalPathname);
+                const error = <any>new Error(`Failed to load: ${load.name}`);
+                error.code = 'ENOTFOUND';
+
+                throw error;
             },
             locate: async (load: SystemJSModule): Promise<string> => {
                 if (!await this.files.has(load.name)) {

@@ -33,6 +33,7 @@
     "dist"
   ],
   "devDependencies": {
+    "@types/node": "^9.4.7",
     "@types/systemjs": "^0.20.6",
     "code": "^5.2.0",
     "eslint": "^4.18.2",
